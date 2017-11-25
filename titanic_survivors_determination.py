@@ -10,18 +10,19 @@ import re
 
 
 def label_encode_features(dataframe):
-	for col in dataframe.columns:
+	new_dataframe = dataframe.copy()
+	for col in new_dataframe.columns:
 	    label_encoder = LabelEncoder()
 	    # print col
 	    try:
-	        dataframe[col] = dataframe[col].fillna("")
-	        dataframe[col] = label_encoder.fit_transform(dataframe[col])
+	        new_dataframe[col] = new_dataframe[col].fillna("")
+	        new_dataframe[col] = label_encoder.fit_transform(new_dataframe[col])
 	    except Exception as e :
 	        print(col)
 	        print(e)
 	        pass
 	# print dataframe.columns        
-	return dataframe        
+	return new_dataframe        
 
 def find_corelations_for_survival(features_data, survival_flag):
 	data  = features_data.copy()
@@ -62,6 +63,7 @@ def feature_engineering(training_set, predict_set):
 def data_preprocessing():
 	training_set = pd.read_csv('past_data_titanic.csv')
 	predict_set = pd.read_csv('test_data_titanic.csv')
+	# print((list(predict_set['PassengerId'])))
 
 	training_set_X = training_set.drop('Survived', axis=1)
 	training_set_Y = training_set['Survived']
@@ -122,6 +124,7 @@ def save_to_csv(dataset, survival_predictions, file_name):
 if __name__ == '__main__':
 	X_train, X_test, y_train, y_test, predict_set =  data_preprocessing()
 	predict_X = label_encode_features(predict_set)
+	print(predict_set['PassengerId'])
 	clf = build_classifier(X_train,  y_train)
 	training_accuracy, test_accuracy = find_accuracy_of_model(clf, 
 		X_train, X_test, y_train, y_test)
