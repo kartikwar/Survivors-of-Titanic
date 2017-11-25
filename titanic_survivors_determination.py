@@ -47,8 +47,8 @@ def get_name_length(name):
 def feature_engineering(training_set, predict_set):
 	full_set = [training_set, predict_set]
 	for dataset in full_set:
-		dataset['isAlone'] = dataset['Parch'] + dataset['SibSp']
-		dataset['isAlone'] = np.where(dataset['isAlone'] > 0, 1, 0)
+		dataset['familySize'] = dataset['Parch'] + dataset['SibSp']
+		dataset['isAlone'] = np.where(dataset['familySize'] > 0, 0, 1)
 		dataset['Title'] = dataset['Name'].apply(get_title)
 		dataset['Title'] = dataset['Title'].replace(['Lady', 'Countess','Capt', 
 		'Col','Don', 'Dr', 'Major', 'Rev', 'Sir', 'Jonkheer', 'Dona'], 'Rare')		
