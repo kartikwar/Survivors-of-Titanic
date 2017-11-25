@@ -48,6 +48,8 @@ def feature_engineering(training_set, predict_set):
 	full_set = [training_set, predict_set]
 	for dataset in full_set:
 		dataset['familySize'] = dataset['Parch'] + dataset['SibSp']
+		dataset['hasCabin'] = dataset["Cabin"].apply(lambda x: 0 
+		if type(x) == float else 1)
 		dataset['isAlone'] = np.where(dataset['familySize'] > 0, 0, 1)
 		dataset['Title'] = dataset['Name'].apply(get_title)
 		dataset['Title'] = dataset['Title'].replace(['Lady', 'Countess','Capt', 
@@ -56,7 +58,7 @@ def feature_engineering(training_set, predict_set):
 		dataset['Title'] = dataset['Title'].replace('Ms', 'Miss')
 		dataset['Title'] = dataset['Title'].replace('Mme', 'Mrs')
 		dataset['NameLength'] = dataset['Name'].apply(get_name_length)
-		drop_elements = ['PassengerId', 'Name', 'SibSp']
+		drop_elements = ['PassengerId', 'Name', 'SibSp', 'Cabin']
 		dataset = dataset.drop(drop_elements, axis = 1)	
 	return (training_set, predict_set)	
 
@@ -124,7 +126,7 @@ def save_to_csv(dataset, survival_predictions, file_name):
 if __name__ == '__main__':
 	X_train, X_test, y_train, y_test, predict_set =  data_preprocessing()
 	predict_X = label_encode_features(predict_set)
-	print(predict_set['PassengerId'])
+	# print(predict_set['PassengerId'])
 	clf = build_classifier(X_train,  y_train)
 	training_accuracy, test_accuracy = find_accuracy_of_model(clf, 
 		X_train, X_test, y_train, y_test)
