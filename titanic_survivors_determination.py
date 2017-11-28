@@ -8,8 +8,13 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import roc_curve, auc
 import xgboost as xgb
 import re
+from sklearn.svm import SVC
 
-
+# Support Vector Classifier parameters 
+svc_params = {
+    'kernel' : 'linear',
+    'C' : 0.025
+    }
 def label_encode_features(dataframe):
 	new_dataframe = dataframe.copy()
 	for col in new_dataframe.columns:
@@ -148,13 +153,21 @@ def first_level_training(X_train, y_train, X_test, y_test, predict_set):
 	gb_predict_set = gb.predict(predict_set)
 	gb_predict_set = gb_predict_set.reshape(418,1)
 
+	svc = SVC(kernel='linear', C=0.025, random_state=0).fit(X_train, y_train)
+	svc_predict_train = svc.predict(X_train)
+	svc_predict_test = svc.predict(X_test)
+	svc_predict_train = svc_predict_train.reshape(668, 1)
+	svc_predict_test = svc_predict_test.reshape(223,1)
+	svc_predict_set = svc.predict(predict_set)
+	svc_predict_set = svc_predict_set.reshape(418,1)
+
 	
 	X_train = np.concatenate(( rf_predict_train, et_predict_train, ada_predict_train, 
-		gb_predict_train), axis=1)
+		gb_predict_train, svc_predict_train), axis=1)
 	X_test = np.concatenate(( rf_predict_test, et_predict_test, 
-		ada_predict_test, gb_predict_test), axis=1)
+		ada_predict_test, gb_predict_test, svc_predict_test), axis=1)
 	predict_set = np.concatenate(( rf_predict_set, et_predict_set, 
-		ada_predict_set, gb_predict_set), axis=1)		
+		ada_predict_set, gb_predict_set, svc_predict_set ), axis=1)		
 	return (X_train, X_test, predict_set)	
 
 def second_level_training(X_train, y_train):
