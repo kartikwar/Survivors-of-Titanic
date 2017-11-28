@@ -10,49 +10,6 @@ import xgboost as xgb
 import re
 
 
-#Random Forest Parameters
-rf_params = {
-    'n_jobs': -1,
-    'n_estimators': 500,
-     'warm_start': True, 
-    'max_depth': 6,
-    'min_samples_leaf': 2,
-    'max_features' : 'sqrt',
-    'verbose': 0
-}
-
-# Extra Trees Parameters
-et_params = {
-    'n_jobs': -1,
-    'n_estimators':500,
-    #'max_features': 0.5,
-    'max_depth': 8,
-    'min_samples_leaf': 2,
-    'verbose': 0
-}
-
-# AdaBoost parameters
-ada_params = {
-    'n_estimators': 500,
-    'learning_rate' : 0.75
-}
-
-# Gradient Boosting parameters
-gb_params = {
-    'n_estimators': 500,
-     #'max_features': 0.2,
-    'max_depth': 5,
-    'min_samples_leaf': 2,
-    'verbose': 0
-}
-
-# Support Vector Classifier parameters 
-svc_params = {
-    'kernel' : 'linear',
-    'C' : 0.025
-    }
-
-
 def label_encode_features(dataframe):
 	new_dataframe = dataframe.copy()
 	for col in new_dataframe.columns:
@@ -149,18 +106,64 @@ def determine_best_params_random_forest(X_train, y_train):
 	best_params =grid_clf_accuracy.best_params_
 	return best_params	
 
-def first_level_training(X_train, y_train, X_test, y_test):
-	# print rf_params
-	print (et_params)
+def first_level_training(X_train, y_train, X_test, y_test, predict_set):
+	training_sets_list = [{'train' : X_train, 
+	'test' : y_train}]
+
 	rf = RandomForestClassifier(warm_start=True,  n_jobs=-1 , verbose=0,
 		min_samples_leaf=2, n_estimators=500, max_features='sqrt',
-		max_depth=6).fit(X_train, y_train)
-	rf_predict = clf.predict(X_train)
-	clf = RandomForestClassifier(warm_start=True,  n_jobs=-1 , verbose=0,
-		min_samples_leaf=2, n_estimators=500, max_features='sqrt',
-		max_depth=6).fit(X_train, y_train)
-	clf_predict = clf.predict(X_train)
-	return (None, None)	
+		max_depth=6, random_state = 0).fit(X_train, y_train)
+	rf_predict_train = rf.predict(X_train)
+	rf_predict_test = rf.predict(X_test)
+	rf_predict_set = rf.predict(predict_set)
+	rf_predict_set = rf_predict_set.reshape(418,1)
+	rf_predict_train = rf_predict_train.reshape(668, 1)
+	rf_predict_test = rf_predict_test.reshape(223,1)
+
+
+	et = ExtraTreesClassifier(n_estimators=500,  n_jobs=-1 , verbose=0,
+		min_samples_leaf=2, max_depth=8, random_state=0).fit(X_train, y_train)
+	et_predict_train = et.predict(X_train)
+	et_predict_test = et.predict(X_test)
+	et_predict_train = et_predict_train.reshape(668, 1)
+	et_predict_test = et_predict_test.reshape(223,1)
+	et_predict_set = et.predict(predict_set)
+	et_predict_set = et_predict_set.reshape(418,1)
+
+	ada = AdaBoostClassifier(n_estimators= 500
+		, learning_rate=0.75, random_state=0).fit(X_train, y_train)	
+	ada_predict_train = ada.predict(X_train)
+	ada_predict_test = ada.predict(X_test)
+	ada_predict_train = ada_predict_train.reshape(668, 1)
+	ada_predict_test = ada_predict_test.reshape(223,1)
+	ada_predict_set = ada.predict(predict_set)
+	ada_predict_set = ada_predict_set.reshape(418,1)
+
+	gb = GradientBoostingClassifier(n_estimators=500, verbose= 0
+		, max_depth= 5, min_samples_leaf=2 ,random_state=0).fit(X_train, y_train)
+	gb_predict_train = gb.predict(X_train)
+	gb_predict_test = gb.predict(X_test)
+	gb_predict_train = gb_predict_train.reshape(668, 1)
+	gb_predict_test = gb_predict_test.reshape(223,1)
+	gb_predict_set = gb.predict(predict_set)
+	gb_predict_set = gb_predict_set.reshape(418,1)
+
+	
+	X_train = np.concatenate(( rf_predict_train, et_predict_train, ada_predict_train, 
+		gb_predict_train), axis=1)
+	X_test = np.concatenate(( rf_predict_test, et_predict_test, 
+		ada_predict_test, gb_predict_test), axis=1)
+	predict_set = np.concatenate(( rf_predict_set, et_predict_set, 
+		ada_predict_set, gb_predict_set), axis=1)		
+	return (X_train, X_test, predict_set)	
+
+def second_level_training(X_train, y_train):
+	# print(X_train.shape)
+	# print(y_train.shape)
+	gbm = xgb.XGBClassifier(n_estimators= 2000,max_depth= 4,min_child_weight= 2,
+		gamma=0.9,subsample=0.8, objective='binary:logistic', 
+		nthread= -1,scale_pos_weight=1).fit(X_train, y_train)
+	return gbm
 
 def build_classifier(X_train, y_train):
 	best_params = determine_best_params_random_forest(X_train, y_train)
@@ -184,13 +187,15 @@ def save_to_csv(dataset, survival_predictions, file_name):
 if __name__ == '__main__':
 	X_train, X_test, y_train, y_test, predict_set =  data_preprocessing()
 	predict_X = label_encode_features(predict_set)
-	print(predict_X)
-	X_train, X_test =  first_level_training(X_train, y_train, X_test, y_test)
-	# clf = build_classifier(X_train,  y_train)
-	# training_accuracy, test_accuracy = find_accuracy_of_model(clf, 
-	# 	X_train, X_test, y_train, y_test)
-	# survival_predictions = clf.predict(predict_X)
-	# save_to_csv(predict_set, survival_predictions, 'predictions.csv')
+	# print(predict_set.shape)
+	X_train, X_test, predict_X =  first_level_training(X_train, y_train, X_test, 
+		y_test, predict_X)
+	clf = second_level_training(X_train, y_train)
+	training_accuracy, test_accuracy = find_accuracy_of_model(clf, 
+		X_train, X_test, y_train, y_test)
+	print(training_accuracy, test_accuracy)
+	survival_predictions = clf.predict(predict_X)
+	save_to_csv(predict_set, survival_predictions, 'predictions.csv')
 	# # print(survival_predictions)
 	# print(training_accuracy, test_accuracy)
 	
