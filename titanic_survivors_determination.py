@@ -1,12 +1,56 @@
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier, ExtraTreesClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
 from sklearn.decomposition import PCA
 from sklearn.metrics import roc_curve, auc
+import xgboost as xgb
 import re
+
+
+#Random Forest Parameters
+rf_params = {
+    'n_jobs': -1,
+    'n_estimators': 500,
+     'warm_start': True, 
+    'max_depth': 6,
+    'min_samples_leaf': 2,
+    'max_features' : 'sqrt',
+    'verbose': 0
+}
+
+# Extra Trees Parameters
+et_params = {
+    'n_jobs': -1,
+    'n_estimators':500,
+    #'max_features': 0.5,
+    'max_depth': 8,
+    'min_samples_leaf': 2,
+    'verbose': 0
+}
+
+# AdaBoost parameters
+ada_params = {
+    'n_estimators': 500,
+    'learning_rate' : 0.75
+}
+
+# Gradient Boosting parameters
+gb_params = {
+    'n_estimators': 500,
+     #'max_features': 0.2,
+    'max_depth': 5,
+    'min_samples_leaf': 2,
+    'verbose': 0
+}
+
+# Support Vector Classifier parameters 
+svc_params = {
+    'kernel' : 'linear',
+    'C' : 0.025
+    }
 
 
 def label_encode_features(dataframe):
@@ -47,10 +91,10 @@ def get_name_length(name):
 def feature_engineering(training_set, predict_set):
 	full_set = [training_set, predict_set]
 	for dataset in full_set:
-		dataset['familySize'] = dataset['Parch'] + dataset['SibSp']
+		dataset['familySize'] = dataset['Parch'] + dataset['SibSp'] + 1
 		dataset['hasCabin'] = dataset["Cabin"].apply(lambda x: 0 
 		if type(x) == float else 1)
-		dataset['isAlone'] = np.where(dataset['familySize'] > 0, 0, 1)
+		dataset['isAlone'] = np.where(dataset['familySize'] > 1, 0, 1)
 		dataset['Title'] = dataset['Name'].apply(get_title)
 		dataset['Title'] = dataset['Title'].replace(['Lady', 'Countess','Capt', 
 		'Col','Don', 'Dr', 'Major', 'Rev', 'Sir', 'Jonkheer', 'Dona'], 'Rare')		
@@ -58,7 +102,8 @@ def feature_engineering(training_set, predict_set):
 		dataset['Title'] = dataset['Title'].replace('Ms', 'Miss')
 		dataset['Title'] = dataset['Title'].replace('Mme', 'Mrs')
 		dataset['NameLength'] = dataset['Name'].apply(get_name_length)
-		drop_elements = ['PassengerId', 'Name', 'SibSp', 'Cabin']
+		dataset['Embarked'] = dataset['Embarked'].fillna('S') 
+		drop_elements = ['PassengerId', 'Name', 'SibSp', 'Cabin', 'Ticket']
 		dataset = dataset.drop(drop_elements, axis = 1)	
 	return (training_set, predict_set)	
 
@@ -95,7 +140,7 @@ def data_preprocessing():
 
 def determine_best_params_random_forest(X_train, y_train):
 	grid_values = {'n_estimators' : [1, 5, 25],
-	'max_features': [1,  2 , 3, 4 , 5 ] 	 
+	'max_features': [1,  2 , 3, 4 , 5] 	 
 	}
 	clf = RandomForestClassifier(random_state = 0)
 	grid_clf_accuracy = GridSearchCV(clf, param_grid=grid_values, 
@@ -104,9 +149,22 @@ def determine_best_params_random_forest(X_train, y_train):
 	best_params =grid_clf_accuracy.best_params_
 	return best_params	
 
+def first_level_training(X_train, y_train, X_test, y_test):
+	# print rf_params
+	print (et_params)
+	rf = RandomForestClassifier(warm_start=True,  n_jobs=-1 , verbose=0,
+		min_samples_leaf=2, n_estimators=500, max_features='sqrt',
+		max_depth=6).fit(X_train, y_train)
+	rf_predict = clf.predict(X_train)
+	clf = RandomForestClassifier(warm_start=True,  n_jobs=-1 , verbose=0,
+		min_samples_leaf=2, n_estimators=500, max_features='sqrt',
+		max_depth=6).fit(X_train, y_train)
+	clf_predict = clf.predict(X_train)
+	return (None, None)	
+
 def build_classifier(X_train, y_train):
 	best_params = determine_best_params_random_forest(X_train, y_train)
-	print best_params
+	# print best_params
 	clf = RandomForestClassifier(random_state = 0
 	, n_estimators = best_params['n_estimators'],
 	max_features = best_params['max_features']).fit(X_train, y_train)	
@@ -126,12 +184,13 @@ def save_to_csv(dataset, survival_predictions, file_name):
 if __name__ == '__main__':
 	X_train, X_test, y_train, y_test, predict_set =  data_preprocessing()
 	predict_X = label_encode_features(predict_set)
-	# print(predict_set['PassengerId'])
-	clf = build_classifier(X_train,  y_train)
-	training_accuracy, test_accuracy = find_accuracy_of_model(clf, 
-		X_train, X_test, y_train, y_test)
-	survival_predictions = clf.predict(predict_X)
-	save_to_csv(predict_set, survival_predictions, 'predictions.csv')
-	# print(survival_predictions)
-	print(training_accuracy, test_accuracy)
+	print(predict_X)
+	X_train, X_test =  first_level_training(X_train, y_train, X_test, y_test)
+	# clf = build_classifier(X_train,  y_train)
+	# training_accuracy, test_accuracy = find_accuracy_of_model(clf, 
+	# 	X_train, X_test, y_train, y_test)
+	# survival_predictions = clf.predict(predict_X)
+	# save_to_csv(predict_set, survival_predictions, 'predictions.csv')
+	# # print(survival_predictions)
+	# print(training_accuracy, test_accuracy)
 	
