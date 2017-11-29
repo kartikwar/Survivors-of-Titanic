@@ -9,12 +9,9 @@ from sklearn.metrics import roc_curve, auc
 import xgboost as xgb
 import re
 from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
 
-# Support Vector Classifier parameters 
-svc_params = {
-    'kernel' : 'linear',
-    'C' : 0.025
-    }
+
 def label_encode_features(dataframe):
 	new_dataframe = dataframe.copy()
 	for col in new_dataframe.columns:
@@ -112,9 +109,6 @@ def determine_best_params_random_forest(X_train, y_train):
 	return best_params	
 
 def first_level_training(X_train, y_train, X_test, y_test, predict_set):
-	training_sets_list = [{'train' : X_train, 
-	'test' : y_train}]
-
 	rf = RandomForestClassifier(warm_start=True,  n_jobs=-1 , verbose=0,
 		min_samples_leaf=2, n_estimators=500, max_features='sqrt',
 		max_depth=6, random_state = 0).fit(X_train, y_train)
@@ -161,18 +155,25 @@ def first_level_training(X_train, y_train, X_test, y_test, predict_set):
 	svc_predict_set = svc.predict(predict_set)
 	svc_predict_set = svc_predict_set.reshape(418,1)
 
+
+	knn = KNeighborsClassifier(n_neighbors=1).fit(X_train, y_train)
+	knn_predict_train = knn.predict(X_train)
+	knn_predict_test = knn.predict(X_test)
+	knn_predict_set = knn.predict(predict_set)
+	knn_predict_train = knn_predict_train.reshape(668, 1)
+	knn_predict_test = knn_predict_test.reshape(223, 1)
+	knn_predict_set = knn_predict_set.reshape(418,1) 
+
 	
 	X_train = np.concatenate(( rf_predict_train, et_predict_train, ada_predict_train, 
-		gb_predict_train, svc_predict_train), axis=1)
+		gb_predict_train, svc_predict_train, knn_predict_train), axis=1)
 	X_test = np.concatenate(( rf_predict_test, et_predict_test, 
-		ada_predict_test, gb_predict_test, svc_predict_test), axis=1)
+		ada_predict_test, gb_predict_test, svc_predict_test, knn_predict_test), axis=1)
 	predict_set = np.concatenate(( rf_predict_set, et_predict_set, 
-		ada_predict_set, gb_predict_set, svc_predict_set ), axis=1)		
+		ada_predict_set, gb_predict_set, svc_predict_set, knn_predict_set ), axis=1)		
 	return (X_train, X_test, predict_set)	
 
 def second_level_training(X_train, y_train):
-	# print(X_train.shape)
-	# print(y_train.shape)
 	gbm = xgb.XGBClassifier(n_estimators= 2000,max_depth= 4,min_child_weight= 2,
 		gamma=0.9,subsample=0.8, objective='binary:logistic', 
 		nthread= -1,scale_pos_weight=1).fit(X_train, y_train)
@@ -200,7 +201,6 @@ def save_to_csv(dataset, survival_predictions, file_name):
 if __name__ == '__main__':
 	X_train, X_test, y_train, y_test, predict_set =  data_preprocessing()
 	predict_X = label_encode_features(predict_set)
-	# print(predict_set.shape)
 	X_train, X_test, predict_X =  first_level_training(X_train, y_train, X_test, 
 		y_test, predict_X)
 	clf = second_level_training(X_train, y_train)
@@ -209,6 +209,4 @@ if __name__ == '__main__':
 	print(training_accuracy, test_accuracy)
 	survival_predictions = clf.predict(predict_X)
 	save_to_csv(predict_set, survival_predictions, 'predictions.csv')
-	# # print(survival_predictions)
-	# print(training_accuracy, test_accuracy)
 	
