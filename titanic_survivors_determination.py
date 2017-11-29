@@ -63,6 +63,18 @@ def feature_engineering(training_set, predict_set):
 		dataset['NameLength'] = dataset['Name'].apply(get_name_length)
 		dataset['Embarked'] = dataset['Embarked'].fillna('S') 
 		drop_elements = ['PassengerId', 'Name', 'SibSp', 'Cabin', 'Ticket']
+		# Mapping Fare
+		dataset.loc[ dataset['Fare'] <= 7.91, 'Fare'] = 0
+		dataset.loc[(dataset['Fare'] > 7.91) & (dataset['Fare'] <= 14.454), 'Fare'] = 1
+		dataset.loc[(dataset['Fare'] > 14.454) & (dataset['Fare'] <= 31), 'Fare']  = 2
+		dataset.loc[ dataset['Fare'] > 31, 'Fare'] = 3
+		# Mapping Age
+		dataset.loc[ dataset['Age'] <= 16, 'Age'] = 0
+		dataset.loc[(dataset['Age'] > 16) & (dataset['Age'] <= 32), 'Age'] = 1
+		dataset.loc[(dataset['Age'] > 32) & (dataset['Age'] <= 48), 'Age'] = 2
+		dataset.loc[(dataset['Age'] > 48) & (dataset['Age'] <= 64), 'Age'] = 3
+		dataset.loc[ dataset['Age'] > 64, 'Age'] = 4
+ 		
 		dataset = dataset.drop(drop_elements, axis = 1)	
 	return (training_set, predict_set)	
 
