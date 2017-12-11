@@ -10,8 +10,16 @@ import xgboost as xgb
 import re
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.cross_validation import KFold;
+from sklearn.cross_validation import KFold
+import multiprocessing
+from functools import partial
+from contextlib import contextmanager
 
+@contextmanager
+def poolcontext(*args, **kwargs):
+    pool = multiprocessing.Pool(*args, **kwargs)
+    yield pool
+    pool.terminate()
 
 def label_encode_features(dataframe):
 	new_dataframe = dataframe.copy()
@@ -46,7 +54,15 @@ def get_title(name):
 def get_name_length(name):
 	name = str(name)
 	length = len(name)
-	return length    
+	return length
+
+def train_model_in_folds(counter_kf_ele, x_train, y_train, x_test, oof_train, oof_test_skf, clf):
+	x_tr = x_train.iloc[counter_kf_ele['indexes'][0]]
+	y_tr = y_train.iloc[counter_kf_ele['indexes'][0]]
+	x_te = x_train.iloc[counter_kf_ele['indexes'][1]]
+	clf.fit(x_tr, y_tr)
+	oof_train[counter_kf_ele['indexes'][1]] = clf.predict(x_te)
+	oof_test_skf[counter_kf_ele['counter'], :] = clf.predict(x_test)
 
 def get_oof(clf, x_train, y_train, x_test):
 	# print (type(x_train))
@@ -56,43 +72,87 @@ def get_oof(clf, x_train, y_train, x_test):
 	oof_train = np.zeros((ntrain,))
 	oof_test = np.zeros((ntest,))
 	SEED = 0 # for reproducibility
-	NFOLDS = 5 # set folds for out-of-fold prediction
+	NFOLDS = 15 # set folds for out-of-fold prediction
 	kf = KFold(len(x_train), n_folds= NFOLDS, random_state=SEED)
+	kf = list(kf)
 	oof_test_skf = np.empty((NFOLDS, ntest))
-	# print oof_test_skf.shape 
-
-	for i, (train_index, test_index) in enumerate(kf):
-		x_tr = x_train.iloc[train_index]
-		y_tr = y_train.iloc[train_index]
-		x_te = x_train.iloc[test_index]
-		clf.fit(x_tr, y_tr)
-		oof_train[test_index] = clf.predict(x_te)
-		oof_test_skf[i, :] = clf.predict(x_test)
-
-	oof_test[:] = oof_test_skf.mean(axis=0)	
-	return oof_train.reshape(-1, 1), oof_test.reshape(-1, 1)
 	
+	counter = 0
+	counter_kf_list = []
+	for ele in kf:
+		counter_kf = {'counter' : counter, 'indexes' : ele}
+		counter_kf_list.append(counter_kf)
+
+	with poolcontext(processes=3) as pool:
+		results = pool.map(partial(train_model_in_folds, 
+			x_train=x_train, y_train=y_train, oof_train=oof_train, oof_test_skf=oof_test_skf, clf=clf, x_test=x_test), counter_kf_list)
+		print (oof_test_skf)
+		oof_test[:] = oof_test_skf.mean(axis=0)	
+		return oof_train.reshape(-1, 1), oof_test.reshape(-1, 1)
+	
+	# kf = list(kf)  
+
+	# for i, (train_index, test_index) in enumerate(kf):
+	# 	x_tr = x_train.iloc[train_index]
+	# 	y_tr = y_train.iloc[train_index]
+	# 	x_te = x_train.iloc[test_index]
+	# 	clf.fit(x_tr, y_tr)
+	# 	oof_train[test_index] = clf.predict(x_te)
+	# 	oof_test_skf[i, :] = clf.predict(x_test)
+
 def feature_engineering(training_set, predict_set):
 	full_set = [training_set, predict_set]
 	for dataset in full_set:
 		dataset['familySize'] = dataset['Parch'] + dataset['SibSp'] + 1
 		dataset['hasCabin'] = dataset["Cabin"].apply(lambda x: 0 
 		if type(x) == float else 1)
+		bins = [-1, 0, 5, 12, 18, 24, 35, 60, np.inf]
+
+		bins = [0, 12, 17, 60, np.inf]
+		labels = ['child', 'teenager', 'adult', 'elderly']
+		age_groups = pd.cut(dataset.Age, bins, labels = labels)
+		dataset['AgeGroup'] = age_groups
+
+		dataset["Age"] = dataset["Age"].fillna(-0.5)		
+		labels = ['Unknown', 'Baby', 'Child', 'Teenager', 'Student', 'Young Adult', 'Adult', 'Senior']
+		dataset['AgeGroup'] = pd.cut(dataset['AgeGroup'], bins, labels = labels)
+		mr_age = dataset[dataset["Title"] == 1]["AgeGroup"].mode() #Young Adult
+		miss_age = dataset[dataset["Title"] == 2]["AgeGroup"].mode() #Student
+		mrs_age = dataset[dataset["Title"] == 3]["AgeGroup"].mode() #Adult
+		master_age = dataset[dataset["Title"] == 4]["AgeGroup"].mode() #Baby
+		royal_age = dataset[dataset["Title"] == 5]["AgeGroup"].mode() #Adult
+		rare_age = dataset[dataset["Title"] == 6]["AgeGroup"].mode() #Adult
+
+		for x in range(len(train["AgeGroup"])):
+			if train["AgeGroup"][x] == "Unknown":
+				train["AgeGroup"][x] = age_title_mapping[train["Title"][x]]
+		#map each Age value to a numerical value
+		age_mapping = {'Baby': 1, 'Child': 2, 'Teenager': 3, 'Student': 4, 'Young Adult': 5, 'Adult': 6, 'Senior': 7}
+		dataset['AgeGroup'] = dataset['AgeGroup'].map(age_mapping)		
+		
 		dataset['isAlone'] = np.where(dataset['familySize'] > 1, 0, 1)
+		
 		dataset['Title'] = dataset['Name'].apply(get_title)
 		dataset['Title'] = dataset['Title'].replace(['Lady', 'Countess','Capt', 
 		'Col','Don', 'Dr', 'Major', 'Rev', 'Sir', 'Jonkheer', 'Dona'], 'Rare')		
 		dataset['Title'] = dataset['Title'].replace('Mlle', 'Miss')
 		dataset['Title'] = dataset['Title'].replace('Ms', 'Miss')
 		dataset['Title'] = dataset['Title'].replace('Mme', 'Mrs')
+		dataset['Title'] = dataset['Title'].replace(['Countess', 'Lady', 'Sir'], 'Royal')
+		
 		dataset['NameLength'] = dataset['Name'].apply(get_name_length)
 		dataset['Embarked'] = dataset['Embarked'].fillna('S') 
-		drop_elements = ['PassengerId', 'Name', 'SibSp', 'Cabin', 'Ticket']
+		drop_elements = ['PassengerId', 'Name', 'SibSp', 'Cabin', 'Ticket', 'Age']
 		# Mapping Fare
+		
+		median_fare = dataset['Fare'].median()
+		dataset['Fare'] = dataset['Fare'].fillna(median_fare)
+		
 		dataset.loc[ dataset['Fare'] <= 7.91, 'Fare'] = 0
 		dataset.loc[(dataset['Fare'] > 7.91) & (dataset['Fare'] <= 14.454), 'Fare'] = 1
 		dataset.loc[(dataset['Fare'] > 14.454) & (dataset['Fare'] <= 31), 'Fare']  = 2
 		dataset.loc[ dataset['Fare'] > 31, 'Fare'] = 3
+		# print dataset['Fare']
 		# Mapping Age
 		dataset.loc[ dataset['Age'] <= 16, 'Age'] = 0
 		dataset.loc[(dataset['Age'] > 16) & (dataset['Age'] <= 32), 'Age'] = 1
@@ -168,7 +228,7 @@ def first_level_training(X_train, y_train, predict_set):
 		gb_predict_train, svc_predict_train, knn_predict_train), axis=1)
 	predict_set = np.concatenate(( rf_predict_test, et_predict_test, 
 		ada_predict_test, gb_predict_test, svc_predict_test, knn_predict_test), axis=1)
-						
+
 	return (X_train, predict_set)	
 
 def second_level_training(X_train, y_train):
@@ -200,11 +260,7 @@ if __name__ == '__main__':
 	X_train, y_train, predict_set =  data_preprocessing()
 	predict_X = label_encode_features(predict_set)
 	X_train, predict_X =  first_level_training(X_train, y_train, predict_X)
-	# get_oof(RandomForestClassifier() ,X_train, y_train, predict_X)
 	clf = second_level_training(X_train, y_train)
-	# training_accuracy, test_accuracy = find_accuracy_of_model(clf, 
-	# 	X_train, X_test, y_train, y_test)
-	# print(training_accuracy, test_accuracy)
 	survival_predictions = clf.predict(predict_X)
 	save_to_csv(predict_set, survival_predictions, 'predictions.csv')
 	
